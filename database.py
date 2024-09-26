@@ -1,4 +1,5 @@
 import psycopg2
+from config import load_env, get_local_db_params
 
 def fetch_cnpj_list(db_params):
     conn = psycopg2.connect(**db_params)
@@ -8,3 +9,9 @@ def fetch_cnpj_list(db_params):
     cur.close()
     conn.close()
     return cnpj_list
+
+def create_db_connection():
+    load_env()
+    db_params = get_local_db_params()
+    conn = psycopg2.connect(**db_params)
+    return conn
