@@ -19,14 +19,16 @@ cur = conn.cursor()
 
 cur.execute("SELECT cnpj FROM tb_empresa")
 cnpj_list = cur.fetchall()
-
+print("CNPJ List:", cnpj_list)
 cur.close()
 conn.close()
 
 for cnpj in cnpj_list:
     cnpj_code = cnpj[0]
+    if not cnpj_code:
+        continue
     print(cnpj_code)
-    url = "https://receitaws.com.br/v1/cnpj/{cnpj_code}"
+    url = f"https://receitaws.com.br/v1/cnpj/{cnpj_code}"
     print(url)
     response = requests.get(url)
     print(response.text)
