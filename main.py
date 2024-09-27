@@ -1,68 +1,63 @@
 import threading
-import tkinter as tk
-from tkinter import ttk
-from PIL import Image, ImageTk
 import time
 import requests
+from PyQt5 import QtWidgets, QtGui, QtCore
+from PIL import Image
 from config import load_env, get_db_params
 from database import fetch_cnpj_list
 from json_utils import load_cnpj_data, update_cnpj_data, save_cnpj_data
 
-class CNPJApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("CREA-TO - Consulta CNPJ Para Receita Federal")
-        self.root.geometry("1200x800")
-        self.root.resizable(False, False)
+class CNPJApp(QtWidgets.QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("CREA-TO - Consulta CNPJ Para Receita Federal")
+        self.setGeometry(100, 100, 1200, 800)
+        self.setFixedSize(1200, 800)
         
-        self.delay = tk.IntVar(value=20)
+        self.delay = 20
         self.running = False
         self.stop_event = threading.Event()
-        self.last_checked_cnpj = tk.StringVar(value="Último CNPJ Consultado: Nenhum")
+        self.last_checked_cnpj = "Último CNPJ Consultado: Nenhum"
         
-        self.style = ttk.Style()
-        self.style.theme_use('clam')
-        self.style.configure('TButton', background='#007acc', foreground='white', font=('Helvetica', 12))
-        self.style.configure('TLabel', background='#e6f2ff', font=('Helvetica', 12))
-        self.style.configure('TEntry', font=('Helvetica', 12))
-        self.style.configure('TListbox', font=('Helvetica', 12))
-        
-        self.create_widgets()
+        self.init_ui()
         self.load_data()
         
-    def create_widgets(self):
-        self.bg_image = Image.open("assets/creatobg.png")
-        self.bg_image = self.bg_image.resize((1200, 800), Image.LANCZOS)
-        self.bg_photo = ImageTk.PhotoImage(self.bg_image)
-        self.bg_label = tk.Label(self.root, image=self.bg_photo)
-        self.bg_label.place(relwidth=1, relheight=1)
+    def init_ui(self):
+        layout = QtWidgets.QVBoxLayout()
         
-        self.start_button = ttk.Button(self.root, text="Iniciar", command=self.start_requests)
-        self.start_button.place(x=20, y=320, width=100, height=30)
+        self.bg_label = QtWidgets.QLabel(self)
+        bg_image = Image.open("assets/creatobg.png")
+        bg_image = bg_image.resize((1200, 800), Image.LANCZOS)
+        bg_image.save("assets/creatobg_resized.png")
+        self.bg_label.setPixmap(QtGui.QPixmap("assets/creatobg_resized.png"))
+        self.bg_label.setScaledContents(True)
+        layout.addWidget(self.bg_label)
         
-        self.stop_button = ttk.Button(self.root, text="Parar", command=self.stop_requests)
-        self.stop_button.place(x=120, y=320, width=100, height=30)
+        self.start_button = QtWidgets.QPushButton("Iniciar", self)
+        self.start_button.setGeometry(20, 320, 100, 30)
+        self.start_button.clicked.connect(self.start_requests)
         
-        self.delay_label = ttk.Label(self.root, text="Atraso (segundos):")
-        self.delay_label.place(x=20, y=280)
+        self.stop_button = QtWidgets.QPushButton("Parar", self)
+        self.stop_button.setGeometry(120, 320, 100, 30)
+        self.stop_button.clicked.connect(self.stop_requests)
         
-        self.delay_entry = ttk.Entry(self.root, textvariable=self.delay)
-        self.delay_entry.place(x=155, y=280, width=100, height=30)
+        self.delay_label = QtWidgets.QLabel("Atraso (segundos):", self)
+        self.delay_label.setGeometry(20, 280, 120, 30)
         
-        self.listbox_frame = tk.Frame(self.root)
-        self.listbox_frame.place(x=20, y=350, width=200, height=350)
+        self.delay_entry = QtWidgets.QSpinBox(self)
+        self.delay_entry.setGeometry(155, 280, 100, 30)
+        self.delay_entry.setValue(self.delay)
         
-        self.cnpj_listbox = tk.Listbox(self.listbox_frame, width=20, height=20, font=('Helvetica', 12))
-        self.cnpj_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.listbox_frame = QtWidgets.QFrame(self)
+        self.listbox_frame.setGeometry(20, 350, 200, 350)
         
-        self.scrollbar = tk.Scrollbar(self.listbox_frame, orient=tk.VERTICAL)
-        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.cnpj_listbox = QtWidgets.QListWidget(self.listbox_frame)
+        self.cnpj_listbox.setGeometry(0, 0, 200, 350)
         
-        self.cnpj_listbox.config(yscrollcommand=self.scrollbar.set)
-        self.scrollbar.config(command=self.cnpj_listbox.yview)
+        self.last_checked_label = QtWidgets.QLabel(self.last_checked_cnpj, self)
+        self.last_checked_label.setGeometry(20, 740, 300, 30)
         
-        self.last_checked_label = ttk.Label(self.root, textvariable=self.last_checked_cnpj)
-        self.last_checked_label.place(x=20, y=740)
+        self.setLayout(layout)
         
     def load_data(self):
         load_env()
@@ -77,10 +72,10 @@ class CNPJApp:
         self.update_listbox()
         
     def update_listbox(self):
-        self.cnpj_listbox.delete(0, tk.END)
+        self.cnpj_listbox.clear()
         for cnpj_code, data in self.cnpj_data.items():
             status = "✔" if data["requested"] else "✘"
-            self.cnpj_listbox.insert(tk.END, f"{cnpj_code} {status}")
+            self.cnpj_listbox.addItem(f"{cnpj_code} {status}")
         
     def start_requests(self):
         if not self.running:
@@ -111,17 +106,16 @@ class CNPJApp:
             save_cnpj_data(self.json_file, self.cnpj_data)
             self.update_listbox()
             
-            self.last_checked_cnpj.set(f"Último CNPJ consultado: {cnpj_code}")
+            self.last_checked_cnpj = f"Último CNPJ consultado: {cnpj_code}"
+            self.last_checked_label.setText(self.last_checked_cnpj)
             
-            time.sleep(self.delay.get())
+            time.sleep(self.delay_entry.value())
         
 def main():
-    root = tk.Tk()
-    root.configure(bg='#e6f2ff')
-    icon_image = ImageTk.PhotoImage(file="assets/minerva.ico")
-    root.iconphoto(False, icon_image)
-    app = CNPJApp(root)
-    root.mainloop()
+    app = QtWidgets.QApplication([])
+    window = CNPJApp()
+    window.show()
+    app.exec_()
 
 if __name__ == "__main__":
     main()
