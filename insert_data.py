@@ -6,16 +6,26 @@ from config import*
 from datetime import datetime
 
 def fetch_data_from_api(cnpj):
-    url = f"https://receitaws.com.br/v1/cnpj/{cnpj}"
-    response = requests.get(url)
-    
-    try:
-        data = response.json()
-    except requests.exceptions.JSONDecodeError:
-        print(f"Erro ao decodificar JSON para o CNPJ: {cnpj}")
+    if len(cnpj) != 14 or not cnpj.isdigit():
+        print(f"CNPJ {cnpj} is not in the correct format. Skipping...")
         return None
-    
-    return data
+
+    url = f"https://receitaws.com.br/v1/cnpj/{cnpj}"
+    while True:
+        response = requests.get(url)
+        
+        if response.status_code == 429:
+            print(f"Rate limit exceeded for CNPJ: {cnpj}. Waiting 60 seconds before retrying...")
+            time.sleep(60)
+            continue
+        
+        try:
+            data = response.json()
+            return data
+        except requests.exceptions.JSONDecodeError:
+            print(f"Erro ao decodificar JSON para o CNPJ: {cnpj}. Retrying...")
+            time.sleep(5)
+            continue
 
 def parse_date(date_str):
     if date_str:

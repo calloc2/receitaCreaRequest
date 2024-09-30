@@ -90,24 +90,39 @@ class CNPJApp(QtWidgets.QWidget):
         if hasattr(self, 'thread'):
             self.thread.join(timeout=1)
         
-    def run_requests(self):
-        for cnpj_code, data in self.cnpj_data.items():
-            if self.stop_event.is_set():
-                break
-            if data["requested"]:
-                continue
-            print(cnpj_code)
-            url = f"https://receitaws.com.br/v1/cnpj/{cnpj_code}"
-            print(url)
+def run_requests(self):
+    for cnpj_code, data in self.cnpj_data.items():
+        if self.stop_event.is_set():
+            break
+        if data["requested"]:
+            continue
+        print(cnpj_code)
+        url = f"https://receitaws.com.br/v1/cnpj/{cnpj_code}"
+        print(url)
+        
+        while True:
             response = requests.get(url)
             print(response.text)
             
-            self.cnpj_data[cnpj_code]["requested"] = True
-            save_cnpj_data(self.json_file, self.cnpj_data)
-            self.update_listbox()
+            if response.status_code == 429:
+                print(f"Rate limit exceeded for CNPJ: {cnpj_code}. Waiting 60 seconds before retrying...")
+                time.sleep(60)
+                continue
             
-            self.last_checked_cnpj = f"Último CNPJ consultado: {cnpj_code}"
-            self.last_checked_label.setText(self.last_checked_cnpj)
+            try:
+                response.json()
+                self.cnpj_data[cnpj_code]["requested"] = True
+                save_cnpj_data(self.json_file, self.cnpj_data)
+                self.update_listbox()
+                
+                self.last_checked_cnpj = f"Último CNPJ consultado: {cnpj_code}"
+                self.last_checked_label.setText(self.last_checked_cnpj)
+                
+                break
+            except requests.exceptions.JSONDecodeError:
+                print(f"Erro ao decodificar JSON para o CNPJ: {cnpj_code}. Retrying...")
+                time.sleep(5)
+                continue
             
             time.sleep(self.delay_entry.value())
         
