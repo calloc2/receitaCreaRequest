@@ -2,12 +2,14 @@ import requests
 import time
 from psycopg2 import errors
 from database import fetch_cnpj_list, create_db_connection
-from config import*
+from config import load_env, get_db_params
 from datetime import datetime
+import json
+import os
 
 def fetch_data_from_api(cnpj):
     if len(cnpj) != 14 or not cnpj.isdigit():
-        print(f"CNPJ {cnpj} is not in the correct format. Skipping...")
+        print(f"CNPJ '{cnpj}' is not in the correct format. Skipping...")
         return None
 
     url = f"https://receitaws.com.br/v1/cnpj/{cnpj}"
@@ -15,7 +17,7 @@ def fetch_data_from_api(cnpj):
         response = requests.get(url)
         
         if response.status_code == 429:
-            print(f"Rate limit exceeded for CNPJ: {cnpj}. Waiting 60 seconds before retrying...")
+            print(f"Excedido o número de requisições para o CNPJ: {cnpj}. Esperando 60 segundos antes de tentar novamente...")
             time.sleep(60)
             continue
         
@@ -24,7 +26,7 @@ def fetch_data_from_api(cnpj):
             return data
         except requests.exceptions.JSONDecodeError:
             print(f"Erro ao decodificar JSON para o CNPJ: {cnpj}. Retrying...")
-            time.sleep(5)
+            time.sleep(20)
             continue
 
 def parse_date(date_str):
@@ -96,13 +98,41 @@ def insert_data(conn, data):
         print(f"Chave duplicada encontrada para o CNPJ: {data.get('cnpj')}. Ignorando este registro.")
         conn.rollback()
 
+def load_cnpj_data(file_path):
+    if os.path.exists(file_path):
+        with open(file_path, 'r') as file:
+            return json.load(file)
+    return {}
+
+def save_cnpj_data(file_path, data):
+    with open(file_path, 'w') as file:
+        json.dump(data, file, indent=4)
+
+def update_cnpj_data(cnpj_list, cnpj_data):
+    for cnpj in cnpj_list:
+        cnpj_code = cnpj[0]
+        if cnpj_code not in cnpj_data:
+            cnpj_data[cnpj_code] = {"requested": False}
+    return cnpj_data
+
 if __name__ == "__main__":
     load_env()
     db_params = get_db_params()
     cnpj_list = fetch_cnpj_list(db_params)
+    cnpj_data = load_cnpj_data('cnpj_list.json')
+    cnpj_data = update_cnpj_data(cnpj_list, cnpj_data)
     conn = create_db_connection()
+    
     for cnpj in cnpj_list:
-        data = fetch_data_from_api(cnpj[0])
+        cnpj_code = cnpj[0]
+        if cnpj_data.get(cnpj_code, {}).get("requested"):
+            print(f"CNPJ {cnpj_code} já foi consultado. Pulando...")
+            continue
+        
+        data = fetch_data_from_api(cnpj_code)
         if data:
             insert_data(conn, data)
+            cnpj_data[cnpj_code] = {"requested": True}
+            save_cnpj_data('cnpj_list.json', cnpj_data)
+    
     conn.close()
