@@ -7,15 +7,10 @@ from datetime import datetime
 import json
 import os
 import re
-from json_utils import load_cnpj_data, save_cnpj_data, update_cnpj_data
 
-def fetch_data_from_api(cnpj, cnpj_data):
+def fetch_data_from_api(cnpj):
     if len(cnpj) != 14 or not cnpj.isdigit():
         print(f"CNPJ '{cnpj}' is not in the correct format. Skipping...")
-        return None
-
-    if cnpj_data.get(cnpj, {}).get("requested"):
-        print(f"CNPJ {cnpj} já foi consultado. Pulando...")
         return None
 
     url = f"https://receitaws.com.br/v1/cnpj/{cnpj}"
@@ -95,50 +90,26 @@ def insert_data(conn, data):
     except errors.UniqueViolation:
         print(f"CNPJ {cnpj} já existe no banco de dados. Pulando...")
 
-def load_cnpj_data(file_path):
-    if os.path.exists(file_path):
-        with open(file_path, 'r') as file:
-            try:
-                return json.load(file)
-            except json.JSONDecodeError:
-                print(f"JSON file {file_path} is empty or corrupted. Fetching data from the database...")
-                return None
-    return None
-
-def save_cnpj_data(file_path, data):
-    with open(file_path, 'w') as file:
-        json.dump(data, file, indent=4)
-
 if __name__ == "__main__":
     load_env()
     db_params = get_db_params()
     cnpj_list = fetch_cnpj_list(db_params)
-    cnpj_data = load_cnpj_data('cnpj_list.json')
     
     conn = create_db_connection()
-    existing_cnpjs = fetch_existing_cnpjs(conn)
-    
-    if cnpj_data is None:
-        cnpj_data = update_cnpj_data(cnpj_list, {})
-    else:
-        cnpj_data = update_cnpj_data(cnpj_list, cnpj_data)
-    
-    for cnpj in existing_cnpjs:
-        if cnpj in cnpj_data:
-            cnpj_data[cnpj]["requested"] = True
-    
-    save_cnpj_data('cnpj_list.json', cnpj_data)
     
     for cnpj in cnpj_list:
         cnpj_code = cnpj[0]
-        if cnpj_data.get(cnpj_code, {}).get("requested"):
-            print(f"CNPJ {cnpj_code} já foi consultado. Pulando...")
-            continue
         
-        data = fetch_data_from_api(cnpj_code, cnpj_data)
+        # Check if CNPJ already exists in the database
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM empresa WHERE cnpj = %s", (cnpj_code,))
+            if cur.fetchone():
+                print(f"CNPJ {cnpj_code} já existe no banco de dados. Pulando...")
+                continue
+        
+        data = fetch_data_from_api(cnpj_code)
         if data:
             insert_data(conn, data)
-            cnpj_data[cnpj_code] = {"requested": True}
-            save_cnpj_data('cnpj_list.json', cnpj_data)
+            time.sleep(20)  # Wait for 20 seconds before processing the next CNPJ
         
     conn.close()
