@@ -1,13 +1,16 @@
 import requests
 import time
 from psycopg2 import errors
-from database import fetch_cnpj_list, create_db_connection
-from config import*
+from database import fetch_cnpj_list, create_db_connection, fetch_existing_cnpjs
+from config import load_env, get_db_params
 from datetime import datetime
+import json
+import os
+import re
 
 def fetch_data_from_api(cnpj):
     if len(cnpj) != 14 or not cnpj.isdigit():
-        print(f"CNPJ {cnpj} is not in the correct format. Skipping...")
+        print(f"CNPJ '{cnpj}' is not in the correct format. Skipping...")
         return None
 
     url = f"https://receitaws.com.br/v1/cnpj/{cnpj}"
@@ -15,7 +18,7 @@ def fetch_data_from_api(cnpj):
         response = requests.get(url)
         
         if response.status_code == 429:
-            print(f"Rate limit exceeded for CNPJ: {cnpj}. Waiting 60 seconds before retrying...")
+            print(f"Excedido o número de requisições para o CNPJ: {cnpj}. Esperando 60 segundos antes de tentar novamente...")
             time.sleep(60)
             continue
         
@@ -24,12 +27,15 @@ def fetch_data_from_api(cnpj):
             return data
         except requests.exceptions.JSONDecodeError:
             print(f"Erro ao decodificar JSON para o CNPJ: {cnpj}. Retrying...")
-            time.sleep(5)
+            time.sleep(20)
             continue
 
 def parse_date(date_str):
     if date_str:
-        return datetime.strptime(date_str, '%d/%m/%Y').date()
+        try:
+            return datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return None
     return None
 
 def truncate(value, max_length):
@@ -43,6 +49,9 @@ def insert_data(conn, data):
     
     try:
         with conn.cursor() as cur:
+            # Remove punctuation from CNPJ
+            cnpj = re.sub(r'\D', '', data.get('cnpj', ''))
+            
             # Insert into empresa table
             cur.execute("""
                 INSERT INTO empresa (
@@ -56,7 +65,7 @@ def insert_data(conn, data):
                 truncate(data.get('abertura'), 50), truncate(data.get('situacao'), 50), truncate(data.get('tipo'), 50), truncate(data.get('nome'), 50), truncate(data.get('fantasia'), 50), truncate(data.get('porte'), 50),
                 truncate(data.get('natureza_juridica'), 50), truncate(data.get('logradouro'), 50), truncate(data.get('numero'), 50), truncate(data.get('complemento'), 50), truncate(data.get('municipio'), 50),
                 truncate(data.get('bairro'), 50), truncate(data.get('uf'), 50), truncate(data.get('cep'), 50), truncate(data.get('telefone'), 50), parse_date(data.get('data_situacao')), truncate(data.get('motivo_situacao'), 50),
-                truncate(data.get('cnpj'), 50), truncate(data.get('ultima_atualizacao'), 50), truncate(data.get('status'), 50), truncate(data.get('email'), 50), truncate(data.get('efr'), 50), truncate(data.get('situacao_especial'), 50),
+                cnpj, truncate(data.get('ultima_atualizacao'), 50), truncate(data.get('status'), 50), truncate(data.get('email'), 50), truncate(data.get('efr'), 50), truncate(data.get('situacao_especial'), 50),
                 parse_date(data.get('data_situacao_especial')), truncate(data.get('capital_social'), 50), truncate(data.get('simples_optante'), 50), parse_date(data.get('simples_data_opcao')),
                 parse_date(data.get('simples_data_exclusao')), truncate(data.get('simples_ultima_atualizacao'), 50), truncate(data.get('billing_free'), 50), truncate(data.get('billing_database'), 50)
             ))
@@ -69,40 +78,38 @@ def insert_data(conn, data):
                     VALUES (%s, %s, %s)
                 """, (empresa_id, truncate(atividade['code'], 50), truncate(atividade['text'], 50)))
 
-            # Insert into atividades_secundarias table
-            for atividade in data.get('atividades_secundarias', []):
+            # Insert into atividade_secundaria table
+            for atividade in data.get('atividade_secundaria', []):
                 cur.execute("""
-                    INSERT INTO atividades_secundarias (empresa_id, code, text)
+                    INSERT INTO atividade_secundaria (empresa_id, code, text)
                     VALUES (%s, %s, %s)
                 """, (empresa_id, truncate(atividade['code'], 50), truncate(atividade['text'], 50)))
 
-            # Insert into qsa table
-            for socio in data.get('qsa', []):
-                cur.execute("""
-                    INSERT INTO qsa (empresa_id, nome, qual)
-                    VALUES (%s, %s, %s)
-                """, (empresa_id, truncate(socio['nome'], 50), truncate(socio['qual'], 50)))
-
-            # Insert into simei table
-            cur.execute("""
-                INSERT INTO simei (empresa_id, optante, data_opcao, data_exclusao, ultima_atualizacao)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (
-                empresa_id, truncate(data.get('optante_simei'), 50), parse_date(data.get('data_opcao_simei')), parse_date(data.get('data_exclusao_simei')), truncate(data.get('ultima_atualizacao_simei'), 50)
-            ))
-
             conn.commit()
+            print(f"CNPJ {cnpj} inserido com sucesso.")
     except errors.UniqueViolation:
-        print(f"Chave duplicada encontrada para o CNPJ: {data.get('cnpj')}. Ignorando este registro.")
-        conn.rollback()
+        print(f"CNPJ {cnpj} já existe no banco de dados. Pulando...")
 
 if __name__ == "__main__":
     load_env()
     db_params = get_db_params()
     cnpj_list = fetch_cnpj_list(db_params)
+    
     conn = create_db_connection()
+    
     for cnpj in cnpj_list:
-        data = fetch_data_from_api(cnpj[0])
+        cnpj_code = cnpj[0]
+        
+        # Check if CNPJ already exists in the database
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM empresa WHERE cnpj = %s", (cnpj_code,))
+            if cur.fetchone():
+                print(f"CNPJ {cnpj_code} já existe no banco de dados. Pulando...")
+                continue
+        
+        data = fetch_data_from_api(cnpj_code)
         if data:
             insert_data(conn, data)
+            time.sleep(20)  # Wait for 20 seconds before processing the next CNPJ
+        
     conn.close()
