@@ -15,3 +15,8 @@ def create_db_connection():
     db_params = get_local_db_params()
     conn = psycopg2.connect(**db_params)
     return conn
+
+def fetch_existing_cnpjs(conn):
+    with conn.cursor() as cur:
+        cur.execute("SELECT cnpj FROM empresa")
+        return [row[0] for row in cur.fetchall()]
