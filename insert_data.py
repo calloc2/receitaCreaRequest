@@ -7,10 +7,11 @@ from datetime import datetime
 import json
 import os
 import re
+from tqdm import tqdm
 
 def fetch_data_from_api(cnpj):
     if len(cnpj) != 14 or not cnpj.isdigit():
-        print(f"CNPJ '{cnpj}' is not in the correct format. Skipping...")
+        print(f"CNPJ '{cnpj}' não está no formato correto. Pulando...")
         return None
 
     url = f"https://receitaws.com.br/v1/cnpj/{cnpj}"
@@ -26,7 +27,7 @@ def fetch_data_from_api(cnpj):
             data = response.json()
             return data
         except requests.exceptions.JSONDecodeError:
-            print(f"Erro ao decodificar JSON para o CNPJ: {cnpj}. Retrying...")
+            print(f"Erro ao decodificar JSON para o CNPJ: {cnpj}. Tentando novamente...")
             time.sleep(20)
             continue
 
@@ -97,19 +98,30 @@ if __name__ == "__main__":
     
     conn = create_db_connection()
     
-    for cnpj in cnpj_list:
-        cnpj_code = cnpj[0]
-        
-        # Check if CNPJ already exists in the database
-        with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM empresa WHERE cnpj = %s", (cnpj_code,))
-            if cur.fetchone():
-                print(f"CNPJ {cnpj_code} já existe no banco de dados. Pulando...")
-                continue
-        
-        data = fetch_data_from_api(cnpj_code)
-        if data:
-            insert_data(conn, data)
-            time.sleep(20)  # Wait for 20 seconds before processing the next CNPJ
+    total_cnpjs = len(cnpj_list)
+    consulted_cnpjs = 0
+    
+    with tqdm(total=total_cnpjs, desc="Inserindo CNPJs", unit="CNPJ") as pbar:
+        for cnpj in cnpj_list:
+            cnpj_code = cnpj[0]
+            
+            # Verificar se o CNPJ já existe no banco de dados
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM empresa WHERE cnpj = %s", (cnpj_code,))
+                if cur.fetchone():
+                    print(f"CNPJ {cnpj_code} já existe no banco de dados. Pulando...")
+                    pbar.update(1)
+                    consulted_cnpjs += 1
+                    print(f"Consultados: {consulted_cnpjs}, Restantes: {total_cnpjs - consulted_cnpjs}")
+                    continue
+            
+            data = fetch_data_from_api(cnpj_code)
+            if data:
+                insert_data(conn, data)
+                time.sleep(20)  # Esperar 20 segundos antes de processar o próximo CNPJ
+            
+            pbar.update(1)
+            consulted_cnpjs += 1
+            print(f"Consultados: {consulted_cnpjs}, Restantes: {total_cnpjs - consulted_cnpjs}")
         
     conn.close()
