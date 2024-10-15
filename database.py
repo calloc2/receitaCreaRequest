@@ -4,7 +4,12 @@ from config import load_env, get_local_db_params
 def fetch_cnpj_list(db_params):
     conn = psycopg2.connect(**db_params)
     cur = conn.cursor()
-    cur.execute("SELECT cnpj FROM tb_empresa")
+    cur.execute("""
+        SELECT te.cnpj 
+        FROM tb_empresa te
+        INNER JOIN tb_naturezajuridica tn ON tn.id = te.naturezajuridica_id 
+        WHERE tn.ativo = true
+    """)
     cnpj_list = cur.fetchall()
     cur.close()
     conn.close()
