@@ -90,6 +90,10 @@ def insert_data(conn, data):
             print(f"CNPJ {cnpj} inserido com sucesso.")
     except errors.UniqueViolation:
         print(f"CNPJ {cnpj} já existe no banco de dados. Pulando...")
+        conn.rollback()
+    except Exception as e:
+        print(f"Erro ao inserir CNPJ {cnpj}: {e}")
+        conn.rollback()
 
 if __name__ == "__main__":
     load_env()
@@ -101,27 +105,29 @@ if __name__ == "__main__":
     total_cnpjs = len(cnpj_list)
     consulted_cnpjs = 0
     
-    with tqdm(total=total_cnpjs, desc="Inserindo CNPJs", unit="CNPJ") as pbar:
-        for cnpj in cnpj_list:
-            cnpj_code = cnpj[0]
-            
-            # Verificar se o CNPJ já existe no banco de dados
-            with conn.cursor() as cur:
-                cur.execute("SELECT 1 FROM empresa WHERE cnpj = %s", (cnpj_code,))
-                if cur.fetchone():
-                    print(f"CNPJ {cnpj_code} já existe no banco de dados. Pulando...")
-                    pbar.update(1)
-                    consulted_cnpjs += 1
-                    print(f"Consultados: {consulted_cnpjs}, Restantes: {total_cnpjs - consulted_cnpjs}")
-                    continue
-            
-            data = fetch_data_from_api(cnpj_code)
-            if data:
-                insert_data(conn, data)
-                time.sleep(20)  # Esperar 20 segundos antes de processar o próximo CNPJ
-            
-            pbar.update(1)
-            consulted_cnpjs += 1
-            print(f"Consultados: {consulted_cnpjs}, Restantes: {total_cnpjs - consulted_cnpjs}")
-        
-    conn.close()
+    try:
+        with tqdm(total=total_cnpjs, desc="Inserindo CNPJs", unit="CNPJ") as pbar:
+            for cnpj in cnpj_list:
+                cnpj_code = cnpj[0]
+                
+                # Verificar se o CNPJ já existe no banco de dados
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1 FROM empresa WHERE cnpj = %s", (cnpj_code,))
+                    if cur.fetchone():
+                        print(f"CNPJ {cnpj_code} já existe no banco de dados. Pulando...")
+                        pbar.update(1)
+                        consulted_cnpjs += 1
+                        print(f"Consultados: {consulted_cnpjs}, Restantes: {total_cnpjs - consulted_cnpjs}")
+                        continue
+                
+                data = fetch_data_from_api(cnpj_code)
+                if data:
+                    insert_data(conn, data)
+                    time.sleep(20)
+                pbar.update(1)
+                consulted_cnpjs += 1
+                print(f"Consultados: {consulted_cnpjs}, Restantes: {total_cnpjs - consulted_cnpjs}")
+    except Exception as e:
+        print(f"Erro durante o processamento: {e}")
+    finally:
+        conn.close()
