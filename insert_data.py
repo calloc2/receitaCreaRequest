@@ -15,21 +15,33 @@ def fetch_data_from_api(cnpj):
         return None
 
     url = f"https://receitaws.com.br/v1/cnpj/{cnpj}"
-    while True:
-        response = requests.get(url)
-        
-        if response.status_code == 429:
-            print(f"Excedido o número de requisições para o CNPJ: {cnpj}. Esperando 60 segundos antes de tentar novamente...")
-            time.sleep(60)
-            continue
-        
+    max_retries = 5
+    retries = 0
+
+    while retries < max_retries:
         try:
+            response = requests.get(url)
+            
+            if response.status_code == 429:
+                print(f"Excedido o número de requisições para o CNPJ: {cnpj}. Esperando 60 segundos antes de tentar novamente...")
+                time.sleep(60)
+                retries += 1
+                continue
+            
+            response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
             data = response.json()
             return data
+        except requests.exceptions.RequestException as e:
+            print(f"Erro ao fazer a requisição para o CNPJ: {cnpj}. Erro: {e}. Tentando novamente em 60 segundos...")
+            time.sleep(60)
+            retries += 1
         except requests.exceptions.JSONDecodeError:
-            print(f"Erro ao decodificar JSON para o CNPJ: {cnpj}. Tentando novamente...")
+            print(f"Erro ao decodificar JSON para o CNPJ: {cnpj}. Tentando novamente em 20 segundos...")
             time.sleep(20)
-            continue
+            retries += 1
+
+    print(f"Falha ao obter dados para o CNPJ: {cnpj} após {max_retries} tentativas. Pulando...")
+    return None
 
 def parse_date(date_str):
     if date_str:
@@ -122,8 +134,11 @@ if __name__ == "__main__":
                 
                 data = fetch_data_from_api(cnpj_code)
                 if data:
-                    insert_data(conn, data)
-                    time.sleep(20)
+                    try:
+                        insert_data(conn, data)
+                    except Exception as e:
+                        print(f"Erro ao inserir dados para o CNPJ {cnpj_code}: {e}")
+                time.sleep(20)
                 pbar.update(1)
                 consulted_cnpjs += 1
                 print(f"Consultados: {consulted_cnpjs}, Restantes: {total_cnpjs - consulted_cnpjs}")
