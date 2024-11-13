@@ -34,6 +34,7 @@ DB_PORT_LOCAL=5432
 
 ### Dependências
 
+O projeto foi desenvolvido na versão do Python 3.12.3.
 Instale as dependências necessárias utilizando `pip`:
 
 ```sh
