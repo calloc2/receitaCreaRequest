@@ -5,10 +5,10 @@ def fetch_cnpj_list(db_params):
     conn = psycopg2.connect(**db_params)
     cur = conn.cursor()
     cur.execute("""
-        SELECT te.cnpj 
-        FROM tb_empresa te
-        INNER JOIN tb_naturezajuridica tn ON tn.id = te.naturezajuridica_id 
-        WHERE tn.ativo = true
+        select te.cnpj from tb_empresa te 
+        left join tb_empresa_registro ter on ter.empresa_id = te.pessoa_id 
+        left join tb_situacaoregistro ts on ts.id = ter.situacaoregistro_id 
+        where ts.descricao = 'ATIVO'
     """)
     cnpj_list = cur.fetchall()
     cur.close()
