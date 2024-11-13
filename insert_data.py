@@ -117,6 +117,9 @@ if __name__ == "__main__":
     total_cnpjs = len(cnpj_list)
     consulted_cnpjs = 0
     
+    start_time = datetime.now()
+    print(f"Início do processamento: {start_time}")
+
     try:
         with tqdm(total=total_cnpjs, desc="Inserindo CNPJs", unit="CNPJ") as pbar:
             for cnpj in cnpj_list:
@@ -146,3 +149,8 @@ if __name__ == "__main__":
         print(f"Erro durante o processamento: {e}")
     finally:
         conn.close()
+    
+    end_time = datetime.now()
+    print(f"Término do processamento: {end_time}")
+    duration = end_time - start_time
+    print(f"Duração total do processamento: {duration}")
