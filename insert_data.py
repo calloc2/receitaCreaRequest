@@ -1,6 +1,6 @@
 import requests
 import time
-from psycopg2 import errors
+from psycopg2 import errors, OperationalError
 from database import fetch_cnpj_list, create_db_connection, fetch_existing_cnpjs
 from config import load_env, get_db_params
 from datetime import datetime
@@ -110,7 +110,12 @@ def insert_data(conn, data):
 if __name__ == "__main__":
     load_env()
     db_params = get_db_params()
-    cnpj_list = fetch_cnpj_list(db_params)
+    
+    try:
+        cnpj_list = fetch_cnpj_list(db_params)
+    except OperationalError as e:
+        print(f"Erro ao conectar ao banco de dados: {e}")
+        exit(1)
     
     conn = create_db_connection()
     
