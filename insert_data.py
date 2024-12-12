@@ -91,10 +91,10 @@ def insert_data(conn, data):
                     VALUES (%s, %s, %s)
                 """, (empresa_id, truncate(atividade['code'], 50), truncate(atividade['text'], 50)))
 
-            # Insert into atividade_secundaria table
-            for atividade in data.get('atividade_secundaria', []):
+            # Insert into atividades_secundarias table
+            for atividade in data.get('atividades_secundarias', []):
                 cur.execute("""
-                    INSERT INTO atividade_secundaria (empresa_id, code, text)
+                    INSERT INTO atividades_secundarias (empresa_id, code, text)
                     VALUES (%s, %s, %s)
                 """, (empresa_id, truncate(atividade['code'], 50), truncate(atividade['text'], 50)))
 
