@@ -28,7 +28,7 @@ def fetch_data_from_api(cnpj):
                 retries += 1
                 continue
             
-            response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
+            response.raise_for_status()
             data = response.json()
             return data
         except requests.exceptions.RequestException as e:
@@ -62,10 +62,8 @@ def insert_data(conn, data):
     
     try:
         with conn.cursor() as cur:
-            # Remove punctuation from CNPJ
             cnpj = re.sub(r'\D', '', data.get('cnpj', ''))
             
-            # Insert into empresa table
             cur.execute("""
                 INSERT INTO empresa (
                     abertura, situacao, tipo, nome, fantasia, porte, natureza_juridica, logradouro, numero, complemento,
@@ -84,14 +82,12 @@ def insert_data(conn, data):
             ))
             empresa_id = cur.fetchone()[0]
 
-            # Insert into atividade_principal table
             for atividade in data.get('atividade_principal', []):
                 cur.execute("""
                     INSERT INTO atividade_principal (empresa_id, code, text)
                     VALUES (%s, %s, %s)
                 """, (empresa_id, truncate(atividade['code'], 50), truncate(atividade['text'], 50)))
 
-            # Insert into atividades_secundarias table
             for atividade in data.get('atividades_secundarias', []):
                 cur.execute("""
                     INSERT INTO atividades_secundarias (empresa_id, code, text)

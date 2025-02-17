@@ -1,33 +1,24 @@
-from flask import Flask, render_template, request, jsonify
-from flask_socketio import SocketIO, emit
 import threading
 import time
 from insert_data import fetch_data_from_api, insert_data
-from database import create_db_connection, fetch_cnpj_list, fetch_existing_cnpjs
+from database import create_db_connection, fetch_cnpj_list
 from config import load_env, get_db_params
 from tqdm import tqdm
 
-app = Flask(__name__)
-socketio = SocketIO(app)
 process_thread = None
 stop_event = threading.Event()
 
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/start', methods=['POST'])
 def start():
     global process_thread, stop_event
     if process_thread is None or not process_thread.is_alive():
         stop_event.clear()
         process_thread = threading.Thread(target=process_cnpjs)
         process_thread.start()
-        return jsonify({'status': 'started'})
+        return {'status': 'started'}
     else:
         stop_event.set()
         process_thread.join()
-        return jsonify({'status': 'stopped'})
+        return {'status': 'stopped'}
 
 def process_cnpjs():
     load_env()
@@ -49,7 +40,6 @@ def process_cnpjs():
                     print(f"CNPJ {cnpj_code} já existe no banco de dados. Pulando...")
                     pbar.update(1)
                     consulted_cnpjs += 1
-                    socketio.emit('progress', {'consulted': consulted_cnpjs, 'total': total_cnpjs})
                     continue
 
             data = fetch_data_from_api(cnpj_code)
@@ -58,10 +48,8 @@ def process_cnpjs():
                 time.sleep(20)
             pbar.update(1)
             consulted_cnpjs += 1
-            socketio.emit('progress', {'consulted': consulted_cnpjs, 'total': total_cnpjs})
 
     conn.close()
-    socketio.emit('progress', {'consulted': consulted_cnpjs, 'total': total_cnpjs, 'message': 'Processo concluído'})
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True)
+    start()
